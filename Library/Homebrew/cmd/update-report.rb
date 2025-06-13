@@ -320,10 +320,11 @@ module Homebrew
           return if (HOMEBREW_PREFIX/".homebrewdocker").exist?
 
           tap_output_header_printed = T.let(false, T::Boolean)
+          default_branches = %w[main master].freeze
           [CoreTap.instance, CoreCaskTap.instance].each do |tap|
             next unless tap.installed?
 
-            if tap.git_branch == "master" &&
+            if default_branches.include?(tap.git_branch) &&
                (Date.parse(T.must(tap.git_repository.last_commit_date)) <= Date.today.prev_month)
               ohai "#{tap.name} is old and unneeded, untapping to save space..."
               tap.uninstall
