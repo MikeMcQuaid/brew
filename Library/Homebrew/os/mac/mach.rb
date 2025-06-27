@@ -12,6 +12,13 @@ module MachOShim
 
   delegate [:dylib_id] => :macho
 
+  def initialize(*args)
+    super
+
+    @macho = T.let(nil, T.nilable(MachO::MachOFile))
+    @mach_data = T.let(nil, T.nilable(T::Array[T::Hash[Symbol, T.untyped]]))
+  end
+
   def macho
     @macho ||= MachO.open(to_s)
   end

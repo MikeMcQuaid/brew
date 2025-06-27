@@ -11,6 +11,15 @@ class Pathname
   include SystemCommand::Mixin
   include DiskUsageExtension
 
+  def initialize(*args)
+    super
+
+    @which_install_info = nil
+    @magic_number = nil
+    @file_type = nil
+    @zipinfo = nil
+  end
+
   # Moves a file from the original location to the {Pathname}'s.
   #
   # @api public

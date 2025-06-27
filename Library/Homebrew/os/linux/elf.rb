@@ -44,6 +44,23 @@ module ELFShim
 
   requires_ancestor { Pathname }
 
+  def initialize(*args)
+    super
+
+    @elf = T.let(nil, T.nilable(T::Boolean))
+    @arch = T.let()
+    @elf_type = nil
+    @rpath = nil
+    @interpreter = nil
+    @dynamic_elf = nil
+    @path = nil
+    @dylibs = nil
+    @dylib_id = nil
+    @dylibs = nil
+    @patchelf_patcher = nil
+    @metadata = nil
+  end
+
   def read_uint8(offset)
     read(1, offset).unpack1("C")
   end
@@ -53,7 +70,7 @@ module ELFShim
   end
 
   def elf?
-    return @elf if defined? @elf
+    return @elf unless @elf.nil?
     return @elf = false if read(MAGIC_NUMBER_ASCII.size, MAGIC_NUMBER_OFFSET) != MAGIC_NUMBER_ASCII
 
     # Check that this ELF file is for Linux or System V.
