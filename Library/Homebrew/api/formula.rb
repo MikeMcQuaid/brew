@@ -3,7 +3,7 @@
 
 require "cachable"
 require "api"
-require "api/download"
+require "api/source_download"
 require "download_queue"
 
 module Homebrew
@@ -34,7 +34,7 @@ module Homebrew
         git_head = formula.tap_git_head || "HEAD"
         tap = formula.tap&.full_name || "Homebrew/homebrew-core"
 
-        download = Homebrew::API::Download.new(
+        download = Homebrew::API::SourceDownload.new(
           "https://raw.githubusercontent.com/#{tap}/#{git_head}/#{path}",
           formula.ruby_source_checksum,
           cache: HOMEBREW_CACHE_API_SOURCE/"#{tap}/#{git_head}/Formula",

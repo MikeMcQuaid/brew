@@ -3,7 +3,7 @@
 
 require "cachable"
 require "api"
-require "api/download"
+require "api/source_download"
 require "download_queue"
 
 module Homebrew
@@ -36,7 +36,7 @@ module Homebrew
         git_head = cask.tap_git_head || "HEAD"
         tap = cask.tap&.full_name || "Homebrew/homebrew-cask"
 
-        download = Homebrew::API::Download.new(
+        download = Homebrew::API::SourceDownload.new(
           "https://raw.githubusercontent.com/#{tap}/#{git_head}/#{path}",
           checksum,
           mirrors: [

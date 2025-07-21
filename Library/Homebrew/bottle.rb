@@ -185,6 +185,9 @@ class Bottle
     end
   end
 
+  sig { override.returns(String) }
+  def download_type = "Bottle"
+
   private
 
   def select_download_strategy(specs)

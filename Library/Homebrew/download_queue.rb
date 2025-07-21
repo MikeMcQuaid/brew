@@ -21,16 +21,10 @@ module Homebrew
     sig { params(downloadable: Downloadable).void }
     def enqueue(downloadable)
       downloads[downloadable] ||= Concurrent::Promises.future_on(
-        pool, RetryableDownload.new(downloadable, tries:), force, quiet
+        pool, RetryableDownload.new(downloadable, tries:, pour:), force, quiet
       ) do |download, force, quiet|
         download.clear_cache if force
         download.fetch(quiet:)
-        if pour && download.bottle?
-          UnpackStrategy.detect(download.cached_download, prioritize_extension: true)
-                        .extract_nestedly(to: HOMEBREW_CELLAR)
-        elsif download.api?
-          FileUtils.touch(download.cached_download, mtime: Time.now)
-        end
       end
     end
 
@@ -42,7 +36,7 @@ module Homebrew
         downloads.each do |downloadable, promise|
           promise.wait!
         rescue ChecksumMismatchError => e
-          opoo "#{downloadable.download_type.capitalize} reports different checksum: #{e.expected}"
+          opoo "#{downloadable.download_type} reports different checksum: #{e.expected}"
           Homebrew.failed = true if downloadable.is_a?(Resource::Patch)
         end
       else
@@ -66,13 +60,13 @@ module Homebrew
               raise future.state.to_s
             end
 
-            message = "#{downloadable.download_type.capitalize} #{downloadable.name}"
+            message = "#{downloadable.download_type} #{downloadable.name}"
             $stdout.print "#{status} #{message}#{"\n" unless last}"
             $stdout.flush
 
             if future.rejected?
               if (e = future.reason).is_a?(ChecksumMismatchError)
-                opoo "#{downloadable.download_type.capitalize} reports different checksum: #{e.expected}"
+                opoo "#{downloadable.download_type} reports different checksum: #{e.expected}"
                 Homebrew.failed = true if downloadable.is_a?(Resource::Patch)
                 next 2
               else

@@ -235,6 +235,9 @@ class Resource
     @url&.specs || {}.freeze
   end
 
+  sig { override.returns(String) }
+  def download_type = "Resource"
+
   protected
 
   def stage_resource(prefix, debug_symbols: false, &block)
@@ -339,6 +342,9 @@ class Resource
       manifest_annotations["sh.brew.bottle.installed_size"]&.to_i
     end
 
+    sig { override.returns(String) }
+    def download_type = "Bottle Manifest"
+
     private
 
     def manifest_annotations
@@ -391,6 +397,9 @@ class Resource
 
       @directory = val
     end
+
+    sig { override.returns(String) }
+    def download_type = "Patch"
   end
 end
 

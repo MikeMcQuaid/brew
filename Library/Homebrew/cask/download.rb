@@ -95,14 +95,10 @@ module Cask
     end
 
     sig { override.returns(String) }
-    def download_name
-      cask.token
-    end
+    def download_name = cask.token
 
     sig { override.returns(String) }
-    def download_type
-      "cask"
-    end
+    def download_type = "Cask"
 
     private
 

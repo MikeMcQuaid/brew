@@ -68,7 +68,8 @@ module Homebrew
 
       if download_queue
         unless skip_download
-          download = Homebrew::API::Download.new(url, nil, cache: HOMEBREW_CACHE_API, require_checksum: false)
+          require "api/json_download"
+          download = Homebrew::API::JSONDownload.new(endpoint, target:, stale_seconds:)
           download_queue.enqueue(download)
         end
         return [{}, false]

@@ -82,9 +82,7 @@ class SoftwareSpec
   end
 
   sig { override.returns(String) }
-  def download_type
-    "formula"
-  end
+  def download_type = "Formula"
 
   def owner=(owner)
     @name = owner.name
