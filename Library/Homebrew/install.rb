@@ -289,6 +289,38 @@ module Homebrew
         end
       end
 
+      sig { params(formula_installers: T::Array[FormulaInstaller]).void }
+      def fetch_formulae(formula_installers)
+        formulae_names_to_install = formula_installers.map { |fi| fi.formula.name }
+        return if formulae_names_to_install.empty?
+
+        formula_sentence = formulae_names_to_install.map { |name| Formatter.identifier(name) }.to_sentence
+        oh1 "Fetching downloads for: #{formula_sentence}", truncate: false
+        if EnvConfig.download_concurrency > 1
+          download_queue = Homebrew::DownloadQueue.new(pour: true)
+          formula_installers.each do |fi|
+            fi.download_queue = download_queue
+          end
+        end
+
+        begin
+          [:prelude_fetch, :prelude, :fetch].each do |step|
+            formula_installers.each do |fi|
+              fi.public_send(step)
+            rescue UnsatisfiedRequirements, DownloadError, ChecksumMismatchError => e
+              ofail "#{fi.formula}: #{e}"
+              next
+            end
+            download_queue&.fetch
+          rescue CannotInstallFormulaError => e
+            ofail e.message
+            next
+          end
+        ensure
+          download_queue&.shutdown
+        end
+      end
+
       def install_formulae(
         formula_installers,
         installed_on_request: true,
@@ -328,34 +360,13 @@ module Homebrew
           return
         end
 
-        formula_sentence = formulae_names_to_install.map { |name| Formatter.identifier(name) }.to_sentence
-        oh1 "Fetching downloads for: #{formula_sentence}", truncate: false
-        if EnvConfig.download_concurrency > 1
-          download_queue = Homebrew::DownloadQueue.new(pour: true)
-          formula_installers.each do |fi|
-            fi.download_queue = download_queue
-          end
-        end
-        begin
-          [:prelude_fetch, :prelude, :fetch].each do |step|
-            formula_installers.each do |fi|
-              fi.public_send(step)
-            rescue UnsatisfiedRequirements, DownloadError, ChecksumMismatchError => e
-              ofail "#{fi.formula}: #{e}"
-              next
-            end
-            download_queue&.fetch
-          rescue CannotInstallFormulaError => e
-            ofail e.message
-            next
-          end
-        ensure
-          download_queue&.shutdown
-        end
+        fetch_formulae(formula_installers)
 
         formula_installers.each do |fi|
-          install_formula(fi)
-          Cleanup.install_formula_clean!(fi.formula)
+          formula = fi.formula
+          upgrade = formula.linked? && formula.outdated? && !formula.head? && !Homebrew::EnvConfig.no_install_upgrade?
+          install_formula(fi, upgrade:)
+          Cleanup.install_formula_clean!(formula)
         end
       end
 
@@ -396,7 +407,47 @@ module Homebrew
         ask_input
       end
 
+      def install_formula(formula_installer, upgrade:)
+        formula = formula_installer.formula
+
+        formula_installer.check_installation_already_attempted
+
+        if upgrade
+          Upgrade.print_upgrade_message(formula, formula_installer.options)
+
+          kegs = Upgrade.outdated_kegs(formula)
+          linked_kegs = kegs.select(&:linked?)
+        else
+          formula.print_tap_action
+        end
+
+        # first we unlink the currently active keg for this formula otherwise it is
+        # possible for the existing build to interfere with the build we are about to
+        # do! Seriously, it happens!
+        kegs.each(&:unlink) if kegs.present?
+
+        formula_installer.install
+        formula_installer.finish
+      rescue FormulaInstallationAlreadyAttemptedError
+        # We already attempted to upgrade f as part of the dependency tree of
+        # another formula. In that case, don't generate an error, just move on.
+        nil
+      ensure
+        # restore previous installation state if build failed
+        begin
+          linked_kegs&.each(&:link) unless formula.latest_version_installed?
+        rescue
+          nil
+        end
+      end
+
       private
+
+      def outdated_kegs(formula)
+        [formula, *formula.old_installed_formulae].map(&:linked_keg)
+                                                  .select(&:directory?)
+                                                  .map { |k| Keg.new(k.resolved_path) }
+      end
 
       def perform_preinstall_checks(all_fatal: false)
         check_prefix
@@ -422,14 +473,6 @@ module Homebrew
           For PowerPC Mac (PPC32/PPC64BE) support, see:
             #{Formatter.url("https://github.com/mistydemeo/tigerbrew")}
         EOS
-      end
-
-      def install_formula(formula_installer)
-        formula = formula_installer.formula
-
-        upgrade = formula.linked? && formula.outdated? && !formula.head? && !Homebrew::EnvConfig.no_install_upgrade?
-
-        Upgrade.install_formula(formula_installer, upgrade:)
       end
 
       def ask_input

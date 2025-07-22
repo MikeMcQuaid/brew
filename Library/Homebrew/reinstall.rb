@@ -7,136 +7,131 @@ require "messages"
 
 module Homebrew
   module Reinstall
-    # struct to keep context of the current installer, keg, formula and option
-    InstallationContext = Struct.new(:formula_installer, :keg, :formula, :options)
-    def self.build_install_context(
-      formula,
-      flags:,
-      force_bottle: false,
-      build_from_source_formulae: [],
-      interactive: false,
-      keep_tmp: false,
-      debug_symbols: false,
-      force: false,
-      debug: false,
-      quiet: false,
-      verbose: false,
-      git: false
-    )
-      if formula.opt_prefix.directory?
-        keg = Keg.new(formula.opt_prefix.resolved_path)
-        tab = keg.tab
-        link_keg = keg.linked?
-        installed_as_dependency = tab.installed_as_dependency == true
-        installed_on_request = tab.installed_on_request == true
-        build_bottle = tab.built_bottle?
-        backup keg
-      else
-        link_keg = nil
-        installed_as_dependency = false
-        installed_on_request = true
-        build_bottle = false
-      end
+    class << self
+      # struct to keep context of the current installer, keg, formula and option
+      InstallationContext = Struct.new(:formula_installer, :keg, :formula, :options)
 
-      build_options = BuildOptions.new(Options.create(flags), formula.options)
-      options = build_options.used_options
-      options |= formula.build.used_options
-      options &= formula.options
-
-      fi = FormulaInstaller.new(
+      def build_install_context(
         formula,
-        **{
-          options:,
-          link_keg:,
-          installed_as_dependency:,
-          installed_on_request:,
-          build_bottle:,
-          force_bottle:,
-          build_from_source_formulae:,
-          git:,
-          interactive:,
-          keep_tmp:,
-          debug_symbols:,
-          force:,
-          debug:,
-          quiet:,
-          verbose:,
-        }.compact,
+        flags:,
+        force_bottle: false,
+        build_from_source_formulae: [],
+        interactive: false,
+        keep_tmp: false,
+        debug_symbols: false,
+        force: false,
+        debug: false,
+        quiet: false,
+        verbose: false,
+        git: false
       )
-      InstallationContext.new(fi, keg, formula, options)
-    end
+        if formula.opt_prefix.directory?
+          keg = Keg.new(formula.opt_prefix.resolved_path)
+          tab = keg.tab
+          link_keg = keg.linked?
+          installed_as_dependency = tab.installed_as_dependency == true
+          installed_on_request = tab.installed_on_request == true
+          build_bottle = tab.built_bottle?
+          backup keg
+        else
+          link_keg = nil
+          installed_as_dependency = false
+          installed_on_request = true
+          build_bottle = false
+        end
 
-    def self.reinstall_formula(
-      install_context,
-      flags:,
-      force_bottle: false,
-      build_from_source_formulae: [],
-      interactive: false,
-      keep_tmp: false,
-      debug_symbols: false,
-      force: false,
-      debug: false,
-      quiet: false,
-      verbose: false,
-      git: false
-    )
-      formula_installer = install_context.formula_installer
-      keg = install_context.keg
-      formula = install_context.formula
-      options = install_context.options
-      link_keg = keg&.linked?
-      formula_installer.prelude
-      formula_installer.fetch
+        build_options = BuildOptions.new(Options.create(flags), formula.options)
+        options = build_options.used_options
+        options |= formula.build.used_options
+        options &= formula.options
 
-      oh1 "Reinstalling #{Formatter.identifier(formula.full_name)} #{options.to_a.join " "}"
+        fi = FormulaInstaller.new(
+          formula,
+          **{
+            options:,
+            link_keg:,
+            installed_as_dependency:,
+            installed_on_request:,
+            build_bottle:,
+            force_bottle:,
+            build_from_source_formulae:,
+            git:,
+            interactive:,
+            keep_tmp:,
+            debug_symbols:,
+            force:,
+            debug:,
+            quiet:,
+            verbose:,
+          }.compact,
+        )
+        InstallationContext.new(fi, keg, formula, options)
+      end
 
-      formula_installer.install
-      formula_installer.finish
-    rescue FormulaInstallationAlreadyAttemptedError
-      nil
-      # Any other exceptions we want to restore the previous keg and report the error.
-    rescue Exception # rubocop:disable Lint/RescueException
-      ignore_interrupts { restore_backup(keg, link_keg, verbose:) }
-      raise
-    else
-      begin
-        FileUtils.rm_r(backup_path(keg)) if backup_path(keg).exist?
-      rescue Errno::EACCES, Errno::ENOTEMPTY
-        odie <<~EOS
-          Could not remove #{backup_path(keg).parent.basename} backup keg! Do so manually:
-            sudo rm -rf #{backup_path(keg)}
-        EOS
+      sig { params(install_context: InstallationContext).void }
+      def reinstall_formula(install_context)
+        formula_installer = install_context.formula_installer
+        keg = install_context.keg
+        formula = install_context.formula
+        options = install_context.options
+        link_keg = keg&.linked?
+        verbose = formula_installer.verbose?
+
+        formula_installer.prelude
+        formula_installer.fetch
+
+        oh1 "Reinstalling #{Formatter.identifier(formula.full_name)} #{options.to_a.join " "}"
+
+        formula_installer.install
+        formula_installer.finish
+      rescue FormulaInstallationAlreadyAttemptedError
+        nil
+        # Any other exceptions we want to restore the previous keg and report the error.
+      rescue Exception # rubocop:disable Lint/RescueException
+        ignore_interrupts { restore_backup(keg, link_keg, verbose:) }
+        raise
+      else
+        begin
+          FileUtils.rm_r(backup_path(keg)) if backup_path(keg).exist?
+        rescue Errno::EACCES, Errno::ENOTEMPTY
+          odie <<~EOS
+            Could not remove #{backup_path(keg).parent.basename} backup keg! Do so manually:
+              sudo rm -rf #{backup_path(keg)}
+          EOS
+        end
+      end
+
+      private
+
+      sig { params(keg: Keg).void }
+      def backup(keg)
+        keg.unlink
+        begin
+          keg.rename backup_path(keg)
+        rescue Errno::EACCES, Errno::ENOTEMPTY
+          odie <<~EOS
+            Could not rename #{keg.name} keg! Check/fix its permissions:
+              sudo chown -R #{ENV.fetch("USER", "$(whoami)")} #{keg}
+          EOS
+        end
+      end
+
+      sig { params(keg: Keg, keg_was_linked: T::Boolean, verbose: T::Boolean).void }
+      def restore_backup(keg, keg_was_linked, verbose:)
+        path = backup_path(keg)
+
+        return unless path.directory?
+
+        FileUtils.rm_r(Pathname.new(keg)) if keg.exist?
+
+        path.rename keg.to_s
+        keg.link(verbose:) if keg_was_linked
+      end
+
+      sig { params(keg: Keg).returns(Pathname) }
+      def backup_path(keg)
+        Pathname.new "#{keg}.reinstall"
       end
     end
-
-    def self.backup(keg)
-      keg.unlink
-      begin
-        keg.rename backup_path(keg)
-      rescue Errno::EACCES, Errno::ENOTEMPTY
-        odie <<~EOS
-          Could not rename #{keg.name} keg! Check/fix its permissions:
-            sudo chown -R #{ENV.fetch("USER", "$(whoami)")} #{keg}
-        EOS
-      end
-    end
-    private_class_method :backup
-
-    def self.restore_backup(keg, keg_was_linked, verbose:)
-      path = backup_path(keg)
-
-      return unless path.directory?
-
-      FileUtils.rm_r(Pathname.new(keg)) if keg.exist?
-
-      path.rename keg
-      keg.link(verbose:) if keg_was_linked
-    end
-    private_class_method :restore_backup
-
-    def self.backup_path(path)
-      Pathname.new "#{path}.reinstall"
-    end
-    private_class_method :backup_path
   end
 end

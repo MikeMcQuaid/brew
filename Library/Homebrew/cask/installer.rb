@@ -456,6 +456,7 @@ on_request: true)
               verbose:                 verbose?,
             }.compact,
           )
+          fi.prelude_fetch
           fi.prelude
           fi.fetch
           fi.install

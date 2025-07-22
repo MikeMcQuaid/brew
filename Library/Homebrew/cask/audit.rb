@@ -570,6 +570,7 @@ module Cask
             dep,
             **install_options,
           )
+          fi.prelude_fetch
           fi.prelude
           fi.fetch
           fi.install

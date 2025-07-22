@@ -130,7 +130,7 @@ module Homebrew
         unless formulae.empty?
           Install.perform_preinstall_checks_once
 
-          install_context = formulae.map do |formula|
+          reinstall_contexts = formulae.map do |formula|
             if formula.pinned?
               onoe "#{formula.full_name} is pinned. You must unpin it to reinstall."
               next
@@ -167,27 +167,14 @@ module Homebrew
             verbose:                    args.verbose?,
           )
 
-          formulae_installer = install_context.map(&:formula_installer)
+          formulae_installers = reinstall_contexts.map(&:formula_installer)
 
           # Main block: if asking the user is enabled, show dependency and size information.
-          Install.ask_formulae(formulae_installer, dependants, args: args) if args.ask?
+          Install.ask_formulae(formulae_installers, dependants, args: args) if args.ask?
 
-          install_context.each do |f|
-            Homebrew::Reinstall.reinstall_formula(
-              f,
-              flags:                      args.flags_only,
-              force_bottle:               args.force_bottle?,
-              build_from_source_formulae: args.build_from_source_formulae,
-              interactive:                args.interactive?,
-              keep_tmp:                   args.keep_tmp?,
-              debug_symbols:              args.debug_symbols?,
-              force:                      args.force?,
-              debug:                      args.debug?,
-              quiet:                      args.quiet?,
-              verbose:                    args.verbose?,
-              git:                        args.git?,
-            )
-            Cleanup.install_formula_clean!(f.formula)
+          reinstall_contexts.each do |reinstall_context|
+            Homebrew::Reinstall.reinstall_formula(reinstall_context)
+            Cleanup.install_formula_clean!(reinstall_context.formula)
           end
 
           Upgrade.upgrade_dependents(
